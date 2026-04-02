@@ -426,15 +426,115 @@ async function extractNotesFromSearchPage() {
 }
 
 // ==================== 2. 详情页抓取 ====================
+
+// 从 window.__INITIAL_STATE__ 提取笔记详情（精确，不会抓错）
+function extractFromInitialState() {
+  try {
+    const state = window.__INITIAL_STATE__;
+    if (!state) return null;
+
+    // 笔记详情页数据
+    const noteState = state.note || {};
+    const noteMap = noteState.noteDetailMap || noteState.noteData || {};
+    const firstKey = Object.keys(noteMap)[0];
+    const noteData = firstKey ? (noteMap[firstKey]?.note || noteMap[firstKey]) : null;
+
+    if (!noteData) return null;
+
+    // 提取笔记正文
+    const note_content = noteData.desc || noteData.title || '';
+
+    // 提取作者信息
+    const user = noteData.user || {};
+    const author_profile_url = user.userId
+      ? `https://www.xiaohongshu.com/user/profile/${user.userId}`
+      : '';
+
+    // 提取粉丝数 - 可能在 user.fansCount 或 user.fans 中
+    let follower_count = 0;
+    if (typeof user.fansCount === 'number') {
+      follower_count = user.fansCount;
+    } else if (typeof user.fans === 'number') {
+      follower_count = user.fans;
+    } else if (typeof user.fansCount === 'string') {
+      follower_count = parseSocialCount(user.fansCount);
+    } else if (typeof user.fans === 'string') {
+      follower_count = parseSocialCount(user.fans);
+    }
+
+    // 遍历 interactions 数组查找粉丝数
+    if (follower_count <= 0 && Array.isArray(user.interactions)) {
+      const fansItem = user.interactions.find(i => i.type === 'fans' || i.name === '粉丝');
+      if (fansItem) {
+        follower_count = parseSocialCount(String(fansItem.count));
+      }
+    }
+
+    return { note_content, follower_count, author_profile_url };
+  } catch (e) {
+    return null;
+  }
+}
+
+// 从 window.__INITIAL_STATE__ 提取用户主页粉丝数
+function extractFollowerFromProfileState() {
+  try {
+    const state = window.__INITIAL_STATE__;
+    if (!state) return 0;
+
+    const userState = state.user || {};
+    const userInfo = userState.userPageData || userState.userInfo || userState;
+
+    // 直接字段
+    if (typeof userInfo.fansCount === 'number' && userInfo.fansCount > 0) return userInfo.fansCount;
+    if (typeof userInfo.fans === 'number' && userInfo.fans > 0) return userInfo.fans;
+    if (typeof userInfo.fansCount === 'string') {
+      const v = parseSocialCount(userInfo.fansCount);
+      if (v > 0) return v;
+    }
+
+    // interactions 数组
+    if (Array.isArray(userInfo.interactions)) {
+      const fansItem = userInfo.interactions.find(i => i.type === 'fans' || i.name === '粉丝');
+      if (fansItem) {
+        const v = parseSocialCount(String(fansItem.count));
+        if (v > 0) return v;
+      }
+    }
+
+    // 递归搜索 state 中的 user 对象
+    const basicInfo = userInfo.basicInfo || userInfo;
+    if (typeof basicInfo.fansCount === 'number' && basicInfo.fansCount > 0) return basicInfo.fansCount;
+    if (typeof basicInfo.fans === 'number' && basicInfo.fans > 0) return basicInfo.fans;
+
+    return 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
 function extractNoteFromDetailPage() {
   try {
+    // 优先从 __INITIAL_STATE__ 提取（精确）
+    const stateData = extractFromInitialState();
+    if (stateData && (stateData.note_content || stateData.follower_count > 0)) {
+      // 如果 state 中没拿到正文，DOM 补充
+      if (!stateData.note_content) {
+        stateData.note_content = getText(findBySelectors([
+          '.desc', '.note-text', '.note-content',
+          '[class*="note-content"]', '[class*="content"]', '[class*="desc"]',
+        ]));
+      }
+      if (!stateData.author_profile_url) {
+        stateData.author_profile_url = findAuthorProfileUrl();
+      }
+      return stateData;
+    }
+
+    // 后备：DOM 解析
     const content = getText(findBySelectors([
-      '.desc',
-      '.note-text',
-      '.note-content',
-      '[class*="note-content"]',
-      '[class*="content"]',
-      '[class*="desc"]',
+      '.desc', '.note-text', '.note-content',
+      '[class*="note-content"]', '[class*="content"]', '[class*="desc"]',
     ]));
     const follower_count = findFollowerCountFromDom();
     const author_profile_url = findAuthorProfileUrl();
@@ -444,6 +544,12 @@ function extractNoteFromDetailPage() {
 
 function extractAuthorFromProfilePage() {
   try {
+    // 优先从 __INITIAL_STATE__ 提取
+    const stateCount = extractFollowerFromProfileState();
+    if (stateCount > 0) {
+      return { follower_count: stateCount };
+    }
+    // 后备：DOM 解析
     return {
       follower_count: findFollowerCountFromDom(),
     };
