@@ -471,13 +471,52 @@ function deepSearchFans(obj, depth = 0) {
   return 0;
 }
 
+// 从 __INITIAL_STATE__ 提取笔记作者的 userId，构建真实的作者主页 URL
+function findAuthorProfileUrlFromState() {
+  try {
+    const state = parseInitialStateFromHTML();
+    if (!state) return '';
+
+    const noteState = state.note || {};
+    // 尝试多种数据结构
+    const maps = [
+      noteState.noteDetailMap,
+      noteState.noteData,
+      noteState.noteInfo,
+      noteState,
+    ].filter(Boolean);
+
+    for (const noteMap of maps) {
+      const keys = Object.keys(noteMap);
+      for (const key of keys) {
+        const entry = noteMap[key];
+        const noteData = entry?.note || entry;
+        if (!noteData || typeof noteData !== 'object') continue;
+        const user = noteData.user || noteData.author || {};
+        const userId = user.userId || user.userid || user.user_id || user.id || '';
+        if (userId && typeof userId === 'string' && userId.length > 5) {
+          return `https://www.xiaohongshu.com/user/profile/${userId}`;
+        }
+      }
+    }
+
+    return '';
+  } catch (e) {
+    return '';
+  }
+}
+
 function extractNoteFromDetailPage() {
   try {
     const content = getText(findBySelectors([
       '.desc', '.note-text', '.note-content',
       '[class*="note-content"]', '[class*="content"]', '[class*="desc"]',
     ]));
-    const author_profile_url = findAuthorProfileUrl();
+    // 优先从 __INITIAL_STATE__ 获取作者主页（精确，不会抓到自己的）
+    let author_profile_url = findAuthorProfileUrlFromState();
+    if (!author_profile_url) {
+      author_profile_url = findAuthorProfileUrl();
+    }
     // 详情页不抓粉丝数（DOM 会抓到登录用户自己的），强制走作者主页
     return { note_content: content, follower_count: 0, author_profile_url };
   } catch (e) { return null; }
