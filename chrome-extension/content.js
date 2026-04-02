@@ -427,47 +427,89 @@ async function extractNotesFromSearchPage() {
 
 // ==================== 2. 详情页抓取 ====================
 
-// 从 window.__INITIAL_STATE__ 提取笔记详情（精确，不会抓错）
-function extractFromInitialState() {
+// 从页面主世界读取 window.__INITIAL_STATE__
+// Content script 运行在隔离环境，无法直接访问页面 JS 变量，
+// 需要注入 <script> 到主世界，通过 DOM 传递数据
+function readInitialState() {
+  return new Promise((resolve) => {
+    const id = '__xhs_state_' + Date.now();
+    const handler = (e) => {
+      window.removeEventListener(id, handler);
+      try {
+        const el = document.getElementById(id);
+        if (el) {
+          const data = JSON.parse(el.textContent || 'null');
+          el.remove();
+          resolve(data);
+        } else {
+          resolve(null);
+        }
+      } catch (err) {
+        resolve(null);
+      }
+    };
+    window.addEventListener(id, handler);
+
+    const script = document.createElement('script');
+    script.textContent = `
+      (function() {
+        var el = document.createElement('div');
+        el.id = ${JSON.stringify(id)};
+        el.style.display = 'none';
+        try {
+          el.textContent = JSON.stringify(window.__INITIAL_STATE__ || null);
+        } catch(e) {
+          el.textContent = 'null';
+        }
+        document.documentElement.appendChild(el);
+        window.dispatchEvent(new Event(${JSON.stringify(id)}));
+      })();
+    `;
+    document.documentElement.appendChild(script);
+    script.remove();
+
+    // 超时保护
+    setTimeout(() => resolve(null), 1000);
+  });
+}
+
+// 从 __INITIAL_STATE__ 提取笔记详情页的作者粉丝数
+function extractFromNoteState(state) {
+  if (!state) return null;
   try {
-    const state = window.__INITIAL_STATE__;
-    if (!state) return null;
-
-    // 笔记详情页数据
     const noteState = state.note || {};
-    const noteMap = noteState.noteDetailMap || noteState.noteData || {};
+    // 尝试多种可能的数据结构
+    const noteMap = noteState.noteDetailMap || noteState.noteData || noteState.noteInfo || {};
     const firstKey = Object.keys(noteMap)[0];
-    const noteData = firstKey ? (noteMap[firstKey]?.note || noteMap[firstKey]) : null;
+    if (!firstKey) return null;
 
+    const entry = noteMap[firstKey];
+    const noteData = entry?.note || entry;
     if (!noteData) return null;
 
-    // 提取笔记正文
     const note_content = noteData.desc || noteData.title || '';
-
-    // 提取作者信息
     const user = noteData.user || {};
     const author_profile_url = user.userId
       ? `https://www.xiaohongshu.com/user/profile/${user.userId}`
       : '';
 
-    // 提取粉丝数 - 可能在 user.fansCount 或 user.fans 中
+    // 提取粉丝数
     let follower_count = 0;
-    if (typeof user.fansCount === 'number') {
-      follower_count = user.fansCount;
-    } else if (typeof user.fans === 'number') {
-      follower_count = user.fans;
-    } else if (typeof user.fansCount === 'string') {
-      follower_count = parseSocialCount(user.fansCount);
-    } else if (typeof user.fans === 'string') {
-      follower_count = parseSocialCount(user.fans);
+    const fanFields = ['fansCount', 'fans'];
+    for (const field of fanFields) {
+      if (typeof user[field] === 'number' && user[field] > 0) {
+        follower_count = user[field];
+        break;
+      }
+      if (typeof user[field] === 'string') {
+        const v = parseSocialCount(user[field]);
+        if (v > 0) { follower_count = v; break; }
+      }
     }
 
-    // 遍历 interactions 数组查找粉丝数
     if (follower_count <= 0 && Array.isArray(user.interactions)) {
       const fansItem = user.interactions.find(i => i.type === 'fans' || i.name === '粉丝');
-      if (fansItem) {
-        follower_count = parseSocialCount(String(fansItem.count));
-      }
+      if (fansItem) follower_count = parseSocialCount(String(fansItem.count));
     }
 
     return { note_content, follower_count, author_profile_url };
@@ -476,36 +518,35 @@ function extractFromInitialState() {
   }
 }
 
-// 从 window.__INITIAL_STATE__ 提取用户主页粉丝数
-function extractFollowerFromProfileState() {
+// 从 __INITIAL_STATE__ 提取用户主页粉丝数
+function extractFollowerFromUserState(state) {
+  if (!state) return 0;
   try {
-    const state = window.__INITIAL_STATE__;
-    if (!state) return 0;
-
     const userState = state.user || {};
-    const userInfo = userState.userPageData || userState.userInfo || userState;
+    // 遍历 userState 中所有对象，查找粉丝数
+    const candidates = [
+      userState.userPageData,
+      userState.userInfo,
+      userState,
+    ].filter(Boolean);
 
-    // 直接字段
-    if (typeof userInfo.fansCount === 'number' && userInfo.fansCount > 0) return userInfo.fansCount;
-    if (typeof userInfo.fans === 'number' && userInfo.fans > 0) return userInfo.fans;
-    if (typeof userInfo.fansCount === 'string') {
-      const v = parseSocialCount(userInfo.fansCount);
-      if (v > 0) return v;
-    }
-
-    // interactions 数组
-    if (Array.isArray(userInfo.interactions)) {
-      const fansItem = userInfo.interactions.find(i => i.type === 'fans' || i.name === '粉丝');
-      if (fansItem) {
-        const v = parseSocialCount(String(fansItem.count));
+    for (const info of candidates) {
+      if (typeof info.fansCount === 'number' && info.fansCount > 0) return info.fansCount;
+      if (typeof info.fans === 'number' && info.fans > 0) return info.fans;
+      if (typeof info.fansCount === 'string') {
+        const v = parseSocialCount(info.fansCount);
         if (v > 0) return v;
       }
+      if (Array.isArray(info.interactions)) {
+        const fansItem = info.interactions.find(i => i.type === 'fans' || i.name === '粉丝');
+        if (fansItem) {
+          const v = parseSocialCount(String(fansItem.count));
+          if (v > 0) return v;
+        }
+      }
+      const basic = info.basicInfo || {};
+      if (typeof basic.fansCount === 'number' && basic.fansCount > 0) return basic.fansCount;
     }
-
-    // 递归搜索 state 中的 user 对象
-    const basicInfo = userInfo.basicInfo || userInfo;
-    if (typeof basicInfo.fansCount === 'number' && basicInfo.fansCount > 0) return basicInfo.fansCount;
-    if (typeof basicInfo.fans === 'number' && basicInfo.fans > 0) return basicInfo.fans;
 
     return 0;
   } catch (e) {
@@ -515,41 +556,19 @@ function extractFollowerFromProfileState() {
 
 function extractNoteFromDetailPage() {
   try {
-    // 优先从 __INITIAL_STATE__ 提取（精确）
-    const stateData = extractFromInitialState();
-    if (stateData && (stateData.note_content || stateData.follower_count > 0)) {
-      // 如果 state 中没拿到正文，DOM 补充
-      if (!stateData.note_content) {
-        stateData.note_content = getText(findBySelectors([
-          '.desc', '.note-text', '.note-content',
-          '[class*="note-content"]', '[class*="content"]', '[class*="desc"]',
-        ]));
-      }
-      if (!stateData.author_profile_url) {
-        stateData.author_profile_url = findAuthorProfileUrl();
-      }
-      return stateData;
-    }
-
-    // 后备：DOM 解析
+    // DOM 解析作为基础
     const content = getText(findBySelectors([
       '.desc', '.note-text', '.note-content',
       '[class*="note-content"]', '[class*="content"]', '[class*="desc"]',
     ]));
-    const follower_count = findFollowerCountFromDom();
     const author_profile_url = findAuthorProfileUrl();
-    return { note_content: content, follower_count, author_profile_url };
+    // 不再从 DOM 抓粉丝数（会抓到自己的），留给 __INITIAL_STATE__ 或作者主页
+    return { note_content: content, follower_count: 0, author_profile_url };
   } catch (e) { return null; }
 }
 
 function extractAuthorFromProfilePage() {
   try {
-    // 优先从 __INITIAL_STATE__ 提取
-    const stateCount = extractFollowerFromProfileState();
-    if (stateCount > 0) {
-      return { follower_count: stateCount };
-    }
-    // 后备：DOM 解析
     return {
       follower_count: findFollowerCountFromDom(),
     };
@@ -562,11 +581,30 @@ async function waitForDetailData(timeoutMs = 12000) {
   const start = Date.now();
   let best = extractNoteFromDetailPage() || { note_content: '', follower_count: 0, author_profile_url: '' };
 
-  while (Date.now() - start < timeoutMs) {
-    if (best.note_content && (best.follower_count > 0 || best.author_profile_url)) {
-      return best;
+  // 尝试从 __INITIAL_STATE__ 获取精确数据
+  const state = await readInitialState();
+  if (state) {
+    const stateData = extractFromNoteState(state);
+    if (stateData) {
+      if (stateData.note_content && stateData.note_content.length > best.note_content.length) {
+        best.note_content = stateData.note_content;
+      }
+      if (stateData.follower_count > 0) {
+        best.follower_count = stateData.follower_count;
+      }
+      if (stateData.author_profile_url) {
+        best.author_profile_url = stateData.author_profile_url;
+      }
     }
+  }
 
+  // 如果已经拿到了足够数据，直接返回
+  if (best.note_content && (best.follower_count > 0 || best.author_profile_url)) {
+    return best;
+  }
+
+  // 轮询 DOM 补充缺失数据
+  while (Date.now() - start < timeoutMs) {
     await sleep(500);
 
     const current = extractNoteFromDetailPage();
@@ -575,11 +613,12 @@ async function waitForDetailData(timeoutMs = 12000) {
     if (current.note_content.length > best.note_content.length) {
       best.note_content = current.note_content;
     }
-    if (current.follower_count > best.follower_count) {
-      best.follower_count = current.follower_count;
-    }
     if (current.author_profile_url) {
       best.author_profile_url = current.author_profile_url;
+    }
+
+    if (best.note_content && best.author_profile_url) {
+      break;
     }
   }
 
@@ -588,6 +627,14 @@ async function waitForDetailData(timeoutMs = 12000) {
 
 async function waitForProfileData(timeoutMs = 12000) {
   const start = Date.now();
+
+  // 优先从 __INITIAL_STATE__ 获取
+  const state = await readInitialState();
+  if (state) {
+    const count = extractFollowerFromUserState(state);
+    if (count > 0) return { follower_count: count };
+  }
+
   let best = extractAuthorFromProfilePage();
   let nudged = false;
 
