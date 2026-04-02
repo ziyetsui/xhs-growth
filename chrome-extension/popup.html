@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小红书爆款分析助手</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #FF2442;
+      --primary-dark: #E01F3D;
+      --primary-light: #FF6B81;
+      --bg: #0F0F12;
+      --bg-card: #1A1A22;
+      --bg-card-hover: #22222D;
+      --bg-input: #15151C;
+      --text: #E8E8ED;
+      --text-secondary: #8E8EA0;
+      --text-dim: #5C5C6F;
+      --border: #2A2A35;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --blue: #3B82F6;
+      --purple: #8B5CF6;
+      --gradient-primary: linear-gradient(135deg, #FF2442, #FF6B81);
+      --gradient-purple: linear-gradient(135deg, #8B5CF6, #A78BFA);
+      --gradient-blue: linear-gradient(135deg, #3B82F6, #60A5FA);
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --shadow-glow: 0 0 20px rgba(255,36,66,0.15);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      width: 100%;
+      height: 100vh;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    body::-webkit-scrollbar { width: 4px; }
+    body::-webkit-scrollbar-track { background: transparent; }
+    body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ====== Header ====== */
+    .header {
+      background: linear-gradient(180deg, rgba(255,36,66,0.08) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+    }
+    .header .logo {
+      width: 28px; height: 28px;
+      background: var(--gradient-primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      box-shadow: var(--shadow-glow);
+    }
+    .header h1 {
+      font-size: 15px; font-weight: 700;
+      background: var(--gradient-primary);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header .status-dot {
+      width: 8px; height: 8px;
+      background: var(--success);
+      border-radius: 50%;
+      margin-left: auto;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ====== Main Content ====== */
+    .content { padding: 16px 20px; }
+
+    /* ====== Step Sections ====== */
+    .step {
+      margin-bottom: 16px;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .step-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .step-label .num {
+      background: var(--border);
+      color: var(--text-secondary);
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px;
+    }
+
+    /* ====== Buttons ====== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-primary {
+      background: var(--gradient-primary);
+      color: white;
+      box-shadow: 0 2px 12px rgba(255,36,66,0.3);
+    }
+    .btn-primary:hover:not(:disabled) {
+      box-shadow: 0 4px 20px rgba(255,36,66,0.5);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--bg-card-hover);
+      border-color: var(--primary);
+    }
+
+    .btn-purple {
+      background: var(--gradient-purple);
+      color: white;
+      box-shadow: 0 2px 12px rgba(139,92,246,0.3);
+    }
+    .btn-blue {
+      background: var(--gradient-blue);
+      color: white;
+      box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-group .btn { flex: 1; }
+
+    .btn-sm {
+      padding: 6px 10px;
+      font-size: 11px;
+      border-radius: 6px;
+      width: auto;
+    }
+
+    .settings-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .settings-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .settings-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .settings-input {
+      width: 100%;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .settings-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(255,36,66,0.12);
+    }
+    .settings-hint {
+      margin-top: 8px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    /* ====== Note Cards ====== */
+    .note-list {
+      max-height: 260px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .note-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      gap: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .note-card:hover {
+      border-color: var(--primary-light);
+      background: var(--bg-card-hover);
+      transform: translateX(2px);
+    }
+    .note-card.selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary), var(--shadow-glow);
+    }
+    .note-cover {
+      width: 52px; height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--border);
+    }
+    .note-info { flex: 1; min-width: 0; }
+    .note-title {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 4px;
+    }
+    .note-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .note-meta span { display: flex; align-items: center; gap: 3px; }
+
+    .score-badge {
+      background: var(--gradient-primary);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      align-self: center;
+    }
+
+    /* ====== Analysis Panel ====== */
+    .analysis-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-top: 8px;
+    }
+    .analysis-panel h3 {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .analysis-section {
+      margin-bottom: 10px;
+    }
+    .analysis-section label {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .analysis-section p {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .tag {
+      background: rgba(255,36,66,0.1);
+      color: var(--primary-light);
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+
+    /* ====== Status Messages ====== */
+    .status-bar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .status-bar.success { border-color: var(--success); color: var(--success); }
+    .status-bar.error { border-color: var(--danger); color: var(--danger); }
+    .status-bar.loading { border-color: var(--warning); color: var(--warning); }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ====== Empty State ====== */
+    .empty-state {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text-dim);
+    }
+    .empty-state .icon { font-size: 32px; margin-bottom: 10px; }
+    .empty-state p { font-size: 13px; line-height: 1.5; }
+
+    /* ====== Footer ====== */
+    .footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--text-dim);
+      text-align: center;
+      background: var(--bg);
+      position: sticky;
+      bottom: 0;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">🔥</div>
+    <h1>小红书爆款分析</h1>
+    <div class="status-dot" id="statusDot" title="后端连接状态"></div>
+  </div>
+
+  <div class="content">
+
+    <div class="step" id="stepApiKey">
+      <div class="step-label">
+        <span class="num">0</span> 服务设置
+      </div>
+      <div class="settings-card">
+        <div class="settings-label">后端地址</div>
+        <div class="settings-row">
+          <input
+            class="settings-input"
+            id="backendUrlInput"
+            type="text"
+            placeholder="https://your-backend.up.railway.app"
+            autocomplete="off"
+          >
+        </div>
+        <div class="btn-group" style="margin-top: 8px;">
+          <button class="btn btn-secondary btn-sm" id="btnResetBackendUrl">恢复默认</button>
+          <button class="btn btn-primary btn-sm" id="btnSaveBackendUrl">保存后端</button>
+        </div>
+        <div class="settings-hint" id="backendUrlStatus">
+          当前后端地址：https://xhs-tool-backend-production.up.railway.app
+        </div>
+
+        <div class="settings-label" style="margin-top: 12px;">DeepSeek API Key</div>
+        <div class="settings-row">
+          <input
+            class="settings-input"
+            id="apiKeyInput"
+            type="password"
+            placeholder="请输入你自己的 DeepSeek API Key"
+            autocomplete="off"
+          >
+        </div>
+        <div class="btn-group" style="margin-top: 8px;">
+          <button class="btn btn-secondary btn-sm" id="btnToggleApiKey">显示</button>
+          <button class="btn btn-secondary btn-sm" id="btnClearApiKey">清空</button>
+          <button class="btn btn-primary btn-sm" id="btnSaveApiKey">保存 Key</button>
+        </div>
+        <div class="settings-hint" id="apiKeyStatus">
+          AI 分析会使用每个用户自己保存的 API Key；不会写入飞书，也不会存入后端数据库。
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 1: 抓取笔记 -->
+    <div class="step" id="stepExtract">
+      <div class="step-label">
+        <span class="num">1</span> 抓取当前页面笔记
+      </div>
+      <button class="btn btn-primary" id="btnExtract">
+        📡 抓取当前页面笔记
+      </button>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar hidden" id="statusBar">
+      <div class="spinner"></div>
+      <span id="statusText">正在处理...</span>
+    </div>
+
+    <!-- Step 2: 筛选结果 -->
+    <div class="step hidden" id="stepNotes">
+      <div class="step-label">
+        <span class="num">2</span> 按潜力值排序的笔记 (<span id="noteCount">0</span>)
+      </div>
+      <div class="note-list" id="noteList"></div>
+
+      <div class="btn-group" style="margin-top: 10px;">
+        <button class="btn btn-purple btn-sm" id="btnAnalyzeBatch">
+          🔬 分析前5篇共性
+        </button>
+        <button class="btn btn-secondary btn-sm" id="btnCollectAll">
+          ⚡ 一键同步所有到飞书
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: 分析结果 -->
+    <div class="step hidden" id="stepAnalysis">
+      <div class="step-label">
+        <span class="num">3</span> AI 分析结果
+      </div>
+      <div id="analysisContent"></div>
+
+      <div class="btn-group" style="margin-top: 10px;">
+        <button class="btn btn-blue btn-sm" id="btnCollectFeishu">
+          📋 收集到飞书
+        </button>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState">
+      <div class="icon">🔍</div>
+      <p>请先打开小红书搜索页面<br>然后点击「抓取当前页面笔记」</p>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    小红书爆款分析助手 v1.0 · 后端 <span id="backendUrlText">https://xhs-tool-backend-production.up.railway.app</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

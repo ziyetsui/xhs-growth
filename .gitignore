@@ -1,0 +1,16 @@
+.DS_Store
+
+# Backend secrets and local runtime data
+/backend/.env
+/backend/data.db
+/backend/data.db-shm
+/backend/data.db-wal
+/backend/node_modules/
+/backend/dist/
+
+# Generated release artifacts
+/release/
+
+# Local editor and OS noise
+.idea/
+.vscode/
