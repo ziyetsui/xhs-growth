@@ -483,34 +483,45 @@ function extractNoteFromDetailPage() {
   } catch (e) { return null; }
 }
 
-// 作者主页提取粉丝数：先从 HTML 中的 __INITIAL_STATE__ 提取，再用 DOM 后备
+// 作者主页提取粉丝数
 function extractAuthorFromProfilePage() {
   try {
-    // 方法1: 从 __INITIAL_STATE__ 提取（最可靠）
-    const state = parseInitialStateFromHTML();
-    if (state) {
-      // 搜索 user 相关节点
-      const userState = state.user || {};
-      const candidates = [
-        userState.userPageData,
-        userState.userInfo,
-        userState,
-      ].filter(Boolean);
+    // 方法1: 精确匹配 XHS 主页的 DOM 结构
+    // <div><span class="count">4.8万</span><span class="shows">粉丝</span></div>
+    const showsSpans = document.querySelectorAll('span.shows');
+    for (const span of showsSpans) {
+      if (getText(span) === '粉丝') {
+        const countSpan = span.parentElement?.querySelector('span.count');
+        if (countSpan) {
+          const v = parseSocialCount(getText(countSpan));
+          if (v > 0) return { follower_count: v };
+        }
+      }
+    }
 
-      for (const info of candidates) {
-        const count = deepSearchFans(info);
-        if (count > 0) return { follower_count: count };
-        // 搜子对象
-        for (const key of Object.keys(info)) {
-          if (typeof info[key] === 'object' && info[key]) {
-            const count2 = deepSearchFans(info[key]);
-            if (count2 > 0) return { follower_count: count2 };
+    // 方法2: data-v 属性匹配（备用，适配不同版本）
+    const allSpans = document.querySelectorAll('span');
+    for (const span of allSpans) {
+      if (getText(span) === '粉丝') {
+        // 找同级的 count span
+        const sibling = span.previousElementSibling || span.parentElement?.querySelector('.count');
+        if (sibling) {
+          const v = parseSocialCount(getText(sibling));
+          if (v > 0) return { follower_count: v };
+        }
+        // 或者父元素中的数字
+        const parent = span.parentElement;
+        if (parent) {
+          const countEl = parent.querySelector('.count');
+          if (countEl) {
+            const v = parseSocialCount(getText(countEl));
+            if (v > 0) return { follower_count: v };
           }
         }
       }
     }
 
-    // 方法2: DOM 解析后备（在作者主页上，页面显示的粉丝数就是该作者的）
+    // 方法3: 通用 DOM 后备
     return {
       follower_count: findFollowerCountFromDom(),
     };
