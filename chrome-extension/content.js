@@ -208,7 +208,7 @@ function getSearchNoteCards() {
     Array.from(document.querySelectorAll('section.note-item, .note-item, .feeds-container section, [class*="note-item"]')),
   );
 
-  const noteLinks = Array.from(document.querySelectorAll('a[href*="/explore/"]'));
+  const noteLinks = Array.from(document.querySelectorAll('a[href*="/explore/"], a[href*="/discovery/item/"]'));
   for (const link of noteLinks) {
     const card = link.closest('section, article, li, div');
     if (card) {
@@ -224,10 +224,10 @@ function extractNoteIdFromHref(href) {
 
   try {
     const url = href.startsWith('http') ? new URL(href) : new URL(href, location.origin);
-    const matched = url.pathname.match(/\/explore\/([^/?#]+)/i);
+    const matched = url.pathname.match(/\/(?:explore|discovery\/item)\/([^/?#]+)/i);
     return matched?.[1] || '';
   } catch (e) {
-    const matched = href.match(/\/explore\/([^/?#]+)/i);
+    const matched = href.match(/\/(?:explore|discovery\/item)\/([^/?#]+)/i);
     return matched?.[1] || '';
   }
 }
@@ -261,11 +261,11 @@ function collectVisibleNotes(noteMap) {
       const cover_url = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : '';
       const titleEl = card.querySelector('.title, .note-title, a.title span');
       const title = titleEl ? titleEl.innerText.trim() : '';
-      const linkEl = card.querySelector('a[href*="/explore/"]');
+      const linkEl = card.querySelector('a[href*="/explore/"], a[href*="/discovery/item/"]');
       const href = linkEl ? linkEl.getAttribute('href') : '';
       const note_id = extractNoteIdFromHref(href);
       const note_url = href ? (href.startsWith('http') ? href : `https://www.xiaohongshu.com${href}`) : '';
-      const likeEl = card.querySelector('.count, .like-count');
+      const likeEl = card.querySelector('.count, .like-count, [class*="like"] .count, span.count');
       const like_count = likeEl ? parseSocialCount(likeEl.innerText.trim()) : 0;
       const authorEl = card.querySelector('.author, .name, .username');
       const author = authorEl ? authorEl.innerText.trim() : '未知';
@@ -354,7 +354,7 @@ function setScrollTop(target, top) {
 }
 
 function getLastExploreLink() {
-  const links = Array.from(document.querySelectorAll('a[href*="/explore/"]'));
+  const links = Array.from(document.querySelectorAll('a[href*="/explore/"], a[href*="/discovery/item/"]'));
   return links[links.length - 1] || null;
 }
 
@@ -422,7 +422,10 @@ async function extractNotesFromSearchPage() {
 
   collectVisibleNotes(noteMap);
   setScrollTop(scrollTarget, originalTop);
-  return Array.from(noteMap.values());
+  
+  const notes = Array.from(noteMap.values());
+  console.log(`[XHS Debug] 批量抓取完成，共发现 ${notes.length} 条笔记`);
+  return notes;
 }
 
 // ==================== 2. 详情页抓取 ====================
@@ -437,7 +440,8 @@ function parseInitialStateFromHTML() {
       // 匹配 window.__INITIAL_STATE__ = {...}
       const match = text.match(/window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*;?\s*(?:$|<\/script|window\.|var |let |const )/s);
       if (match) {
-        return JSON.parse(match[1]);
+        let cleanStr = match[1].replace(/undefined/g, 'null');
+        return JSON.parse(cleanStr);
       }
     }
     return null;
@@ -462,14 +466,56 @@ function deepSearchFans(obj, depth = 0) {
   // interactions 数组
   if (Array.isArray(obj.interactions)) {
     const fansItem = obj.interactions.find(i => i.type === 'fans' || i.name === '粉丝');
-    if (fansItem) {
+    if (fansItem && fansItem.count) {
       const v = parseSocialCount(String(fansItem.count));
+      if (v > 0) return v;
+    }
+  }
+
+  // 递归深入
+  for (const key of Object.keys(obj)) {
+    if (obj[key] && typeof obj[key] === 'object') {
+      const v = deepSearchFans(obj[key], depth + 1);
       if (v > 0) return v;
     }
   }
 
   return 0;
 }
+
+// 从 __INITIAL_STATE__ 中深度搜索点赞数
+function deepSearchLikes(obj, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 5) return 0;
+
+  // 直接字段
+  for (const field of ['likeCount', 'likes', 'collectCount', 'collect']) {
+    if (typeof obj[field] === 'number' && obj[field] > 0) return obj[field];
+    if (typeof obj[field] === 'string') {
+      const v = parseSocialCount(obj[field]);
+      if (v > 0) return v;
+    }
+  }
+
+  // interactions 数组
+  if (Array.isArray(obj.interactions)) {
+    const likeItem = obj.interactions.find(i => i.type === 'like' || i.type === 'collect' || i.name === '点赞' || i.name === '收藏');
+    if (likeItem && likeItem.count) {
+      const v = parseSocialCount(String(likeItem.count));
+      if (v > 0) return v;
+    }
+  }
+
+  // 递归深入
+  for (const key of Object.keys(obj)) {
+    if (obj[key] && typeof obj[key] === 'object') {
+      const v = deepSearchLikes(obj[key], depth + 1);
+      if (v > 0) return v;
+    }
+  }
+
+  return 0;
+}
+
 
 // 从 __INITIAL_STATE__ 提取笔记作者的 userId，构建真实的作者主页 URL
 function findAuthorProfileUrlFromState() {
@@ -512,58 +558,141 @@ function extractNoteFromDetailPage() {
       '.desc', '.note-text', '.note-content',
       '[class*="note-content"]', '[class*="content"]', '[class*="desc"]',
     ]));
-    // 优先从 __INITIAL_STATE__ 获取作者主页（精确，不会抓到自己的）
+
     let author_profile_url = findAuthorProfileUrlFromState();
     if (!author_profile_url) {
       author_profile_url = findAuthorProfileUrl();
     }
-    // 详情页不抓粉丝数（DOM 会抓到登录用户自己的），强制走作者主页
-    return { note_content: content, follower_count: 0, author_profile_url };
-  } catch (e) { return null; }
+
+    let like_count = 0;
+    try {
+      const state = parseInitialStateFromHTML();
+      console.log('[XHS Debug] __INITIAL_STATE__:', state ? '已找到' : '未找到');
+
+      if (state && state.note) {
+        const noteState = state.note;
+        const maps = [
+          noteState.noteDetailMap,
+          noteState.noteData,
+          noteState.noteInfo,
+          noteState,
+        ].filter(Boolean);
+
+        for (const noteMap of maps) {
+          const keys = Object.keys(noteMap);
+          for (const key of keys) {
+            const entry = noteMap[key];
+            const noteData = entry?.note || entry;
+            if (noteData && typeof noteData === 'object') {
+              const v = deepSearchLikes(noteData);
+              if (v > 0) {
+                like_count = v;
+                console.log('[XHS Debug] 点赞数:', like_count);
+              }
+            }
+          }
+          if (like_count > 0) break;
+        }
+      }
+    } catch (e) {
+      console.error('[XHS Debug] 提取点赞数失败:', e);
+    }
+
+    // DOM Fallback for like_count
+    if (like_count === 0) {
+      // Look for standard interact container in the detailed page
+      const interactContainers = document.querySelectorAll('[class*="interact"], [class*="action"], [class*="left"]');
+      for (const el of interactContainers) {
+        const text = el.innerText || '';
+        if (text.length < 100) {
+          const countSpans = el.querySelectorAll('span.count, span[class*="count"]');
+          if (countSpans.length >= 1) {
+            const v = parseSocialCount(getText(countSpans[0]));
+            if (v > 0) {
+              like_count = v;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Broader fallback - look for explicit likes label near a number
+      if (like_count === 0) {
+        const allSpans = document.querySelectorAll('span');
+        for (const span of allSpans) {
+          const text = span.textContent || '';
+          if (text.includes('赞')) {
+            const v = parseSocialCount(text.replace(/点赞|赞/g, '').trim());
+            if (v > 0) { 
+              like_count = v; 
+              break; 
+            }
+          }
+        }
+      }
+    }
+
+    console.log('[XHS Debug] 详情页提取结果:', { content: content.substring(0, 50), author_profile_url, like_count });
+    return { note_content: content, follower_count: 0, author_profile_url, like_count };
+  } catch (e) {
+    console.error('[XHS Debug] extractNoteFromDetailPage 失败:', e);
+    return null;
+  }
 }
 
 // 作者主页提取粉丝数
 function extractAuthorFromProfilePage() {
   try {
-    // 方法1: 精确匹配 XHS 主页的 DOM 结构
-    // <div><span class="count">4.8万</span><span class="shows">粉丝</span></div>
-    const showsSpans = document.querySelectorAll('span.shows');
-    for (const span of showsSpans) {
-      if (getText(span) === '粉丝') {
-        const countSpan = span.parentElement?.querySelector('span.count');
-        if (countSpan) {
-          const v = parseSocialCount(getText(countSpan));
-          if (v > 0) return { follower_count: v };
+    // 优先：极度精确的 DOM 结构匹配
+    const allEls = document.querySelectorAll('span, div');
+    for (const el of allEls) {
+      const txt = el.textContent.trim();
+      if (txt === '粉丝' || txt === '粉丝数') {
+        let parent = el.parentElement;
+        // 向上找最多2层，防止结构过深
+        for (let i = 0; i < 2; i++) {
+          if (!parent) break;
+          const text = (parent.textContent || '').replace(/\n+/g, ' ');
+          let match = text.match(/([0-9.,]+(?:万|[wWkK])?)\s*(?:粉丝|粉丝数)/);
+          if (match) {
+            const v = parseSocialCount(match[1]);
+            if (v > 0) return { follower_count: v };
+          }
+          match = text.match(/(?:粉丝|粉丝数)\s*[:：]?\s*([0-9.,]+(?:万|[wWkK])?)/);
+          if (match) {
+            const v = parseSocialCount(match[1]);
+            if (v > 0) return { follower_count: v };
+          }
+          parent = parent.parentElement;
         }
       }
     }
 
-    // 方法2: data-v 属性匹配（备用，适配不同版本）
-    const allSpans = document.querySelectorAll('span');
-    for (const span of allSpans) {
-      if (getText(span) === '粉丝') {
-        // 找同级的 count span
-        const sibling = span.previousElementSibling || span.parentElement?.querySelector('.count');
-        if (sibling) {
-          const v = parseSocialCount(getText(sibling));
-          if (v > 0) return { follower_count: v };
-        }
-        // 或者父元素中的数字
-        const parent = span.parentElement;
-        if (parent) {
-          const countEl = parent.querySelector('.count');
-          if (countEl) {
-            const v = parseSocialCount(getText(countEl));
+    // 备用 1: 大容器模糊匹配
+    const containers = document.querySelectorAll('div, section, header, [class*="info"]');
+    for (const el of containers) {
+      const text = el.textContent || '';
+      if ((text.includes('粉丝') || text.includes('粉丝数')) && (text.includes('关注') || text.includes('获赞') || text.includes('收藏'))) {
+        if (text.length < 300) {
+          const cleanText = text.replace(/\n+/g, ' ');
+          let match = cleanText.match(/([0-9.,]+(?:万|[wWkK])?)\s*(?:粉丝|粉丝数)/);
+          if (match) {
+            const v = parseSocialCount(match[1]);
             if (v > 0) return { follower_count: v };
           }
         }
       }
     }
 
-    // 方法3: 通用 DOM 后备
-    return {
-      follower_count: findFollowerCountFromDom(),
-    };
+    // 备用 2: 从 __INITIAL_STATE__（严格限制为被访问的博主数据 userPageData，屏蔽登录账号的数据）
+    const state = parseInitialStateFromHTML();
+    if (state && state.user && state.user.userPageData) {
+       const v = deepSearchFans(state.user.userPageData);
+       if (v > 0) return { follower_count: v };
+    }
+
+    // 最后的通用 DOM 后备
+    return { follower_count: findFollowerCountFromDom() };
   } catch (e) {
     return { follower_count: 0 };
   }
@@ -637,7 +766,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.action === 'extractDetailPage') {
     waitForDetailData().then((note) => sendResponse({ note })).catch(() => {
-      sendResponse({ note: { note_content: '', follower_count: 0, author_profile_url: '' } });
+      sendResponse({ note: { note_content: '', follower_count: 0, author_profile_url: '', video_url: '' } });
     });
     return true;
   }

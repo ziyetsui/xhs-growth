@@ -128,7 +128,9 @@ async function deepFetchNote(url, fallbackAuthorProfileUrl = '') {
     const note = {
       note_content: detailResp?.note?.note_content || '',
       follower_count: detailResp?.note?.follower_count || 0,
-      author_profile_url: detailResp?.note?.author_profile_url || fallbackAuthorProfileUrl || '',
+      author_profile_url: fallbackAuthorProfileUrl || detailResp?.note?.author_profile_url || '',
+      like_count: detailResp?.note?.like_count || 0,
+      video_url: detailResp?.note?.video_url || '',
     };
 
     if ((!note.follower_count || note.follower_count <= 0) && note.author_profile_url) {
@@ -146,6 +148,8 @@ async function deepFetchNote(url, fallbackAuthorProfileUrl = '') {
     return {
       note_content: note.note_content,
       follower_count: note.follower_count,
+      like_count: note.like_count,
+      video_url: note.video_url,
     };
   } finally {
     await removeTab(tab.id);
