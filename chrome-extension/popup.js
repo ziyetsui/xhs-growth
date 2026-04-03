@@ -483,7 +483,6 @@ async function scanNotes(notesToScan, label) {
           currentNotes[currentIndex].follower_count = resp.note.follower_count || 0;
           currentNotes[currentIndex].like_count = resp.note.like_count || currentNotes[currentIndex].like_count || 0;
           currentNotes[currentIndex].note_content = resp.note.note_content || '';
-          currentNotes[currentIndex].video_url = resp.note.video_url || '';
           currentNotes[currentIndex].potential_score = resp.note.follower_count > 0
             ? currentNotes[currentIndex].like_count / resp.note.follower_count
             : 0;
@@ -574,12 +573,10 @@ async function collectAllToFeishu() {
     return;
   }
 
-  // 测试模式：只截取第一条
-  const testNotes = currentNotes.slice(0, 1);
-  setStatus(`🚀 测试模式：正在同步第 1 篇笔记到飞书...`, 'loading');
+  setStatus(`🚀 正在同步所有 ${currentNotes.length} 篇笔记到飞书...`, 'loading');
 
   let success = 0;
-  for (const note of testNotes) {
+  for (const note of currentNotes) {
     try {
       await apiCall('/api/records', 'POST', {
         job_id: currentJobId,
@@ -592,7 +589,6 @@ async function collectAllToFeishu() {
         follower_count: note.follower_count,
         potential_score: note.potential_score || 0,
         note_content: note.note_content || '(自动采集)',
-        video_url: note.video_url || '',
         analysis_result: { message: '批量快速收录' },
       });
       success += 1;
