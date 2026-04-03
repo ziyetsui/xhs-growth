@@ -80,6 +80,8 @@ export interface FeishuRecord {
   note_content: string;
   analysis_result: string; // JSON string
   status: RecordStatus;
+  feishu_app_token: string | null;
+  feishu_table_id: string | null;
   feishu_record_url: string | null;
   platform_error_code: string | null;
   created_at: string;
@@ -98,4 +100,6 @@ export interface CreateRecordPayload {
   potential_score: number;
   note_content: string;
   analysis_result: object;
+  feishu_app_token?: string;
+  feishu_table_id?: string;
 }

@@ -245,6 +245,8 @@ export async function createRecord(req: Request, res: Response) {
       potential_score: record.potential_score,
       note_content: record.note_content,
       analysis_result: record.analysis_result,
+      app_token: record.feishu_app_token || undefined,
+      table_id: record.feishu_table_id || undefined,
     })
       .then(feishu_record_url => {
         db.updateRecord(record.id, { status: 'SYNCED', feishu_record_url });
@@ -300,6 +302,8 @@ export async function retrySyncRecord(req: Request, res: Response) {
       potential_score: record.potential_score,
       note_content: record.note_content,
       analysis_result: record.analysis_result,
+      app_token: record.feishu_app_token || undefined,
+      table_id: record.feishu_table_id || undefined,
     })
       .then(feishu_record_url => {
         db.updateRecord(record.id, { status: 'SYNCED', feishu_record_url });

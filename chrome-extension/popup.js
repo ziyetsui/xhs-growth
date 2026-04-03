@@ -6,6 +6,8 @@ const DEFAULT_API_BASE = 'https://xhs-tool-backend-production.up.railway.app';
 const STORAGE_KEYS = {
   backendBaseUrl: 'backend_base_url',
   aiApiKey: 'deepseek_api_key',
+  feishuAppToken: 'feishu_app_token',
+  feishuTableId: 'feishu_table_id',
 };
 
 let currentJobId = null;
@@ -13,6 +15,8 @@ let currentNotes = [];
 let currentAnalysis = null;
 let backendBaseUrl = DEFAULT_API_BASE;
 let savedApiKey = '';
+let savedFeishuAppToken = '';
+let savedFeishuTableId = '';
 let analysisInProgress = false;
 
 const MAX_SCAN_ROUNDS = 10;
@@ -168,26 +172,79 @@ function removeStorage(keys) {
 }
 
 async function loadApiKeySettings() {
-  const result = await getStorage([STORAGE_KEYS.aiApiKey, STORAGE_KEYS.backendBaseUrl]);
+  const result = await getStorage([
+    STORAGE_KEYS.aiApiKey,
+    STORAGE_KEYS.backendBaseUrl,
+    STORAGE_KEYS.feishuAppToken,
+    STORAGE_KEYS.feishuTableId,
+  ]);
   backendBaseUrl = formatBackendUrl(result?.[STORAGE_KEYS.backendBaseUrl] || DEFAULT_API_BASE);
   const key = String(result?.[STORAGE_KEYS.aiApiKey] || '').trim();
   savedApiKey = key;
 
+  savedFeishuAppToken = String(result?.[STORAGE_KEYS.feishuAppToken] || '').trim();
+  savedFeishuTableId = String(result?.[STORAGE_KEYS.feishuTableId] || '').trim();
+
   updateBackendUrlLabel();
   setBackendUrlStatus(`当前后端地址：${backendBaseUrl}`, 'success');
 
-  const input = $('#apiKeyInput');
-  if (input) {
-    input.value = key;
-  }
+  const apiKeyInput = $('#apiKeyInput');
+  if (apiKeyInput) apiKeyInput.value = key;
+
+  const appTokenInput = $('#feishuAppTokenInput');
+  if (appTokenInput) appTokenInput.value = savedFeishuAppToken;
+
+  const tableIdInput = $('#feishuTableIdInput');
+  if (tableIdInput) tableIdInput.value = savedFeishuTableId;
 
   if (key) {
     setApiKeyStatus(`已保存个人 API Key：${maskKey(key)}`, 'success');
-  } else {
-    setApiKeyStatus('AI 分析会使用每个用户自己保存的 API Key；不会写入飞书，也不会存入后端数据库。');
+  }
+
+  if (savedFeishuAppToken && savedFeishuTableId) {
+    setFeishuStatus(`已连接到个人表格: ${maskKey(savedFeishuAppToken)}`, 'success');
   }
 
   updateActionButtons();
+}
+
+function setFeishuStatus(text, type = 'default') {
+  const status = $('#feishuStatus');
+  if (!status) return;
+  status.textContent = text;
+  status.style.color = getApiKeyStatusColor(type);
+}
+
+async function saveFeishuSettings() {
+  const appToken = $('#feishuAppTokenInput')?.value?.trim() || '';
+  const tableId = $('#feishuTableIdInput')?.value?.trim() || '';
+
+  if (!appToken || !tableId) {
+    setFeishuStatus('请填写完整的 App Token 和 Table ID。', 'error');
+    return;
+  }
+
+  await setStorage({
+    [STORAGE_KEYS.feishuAppToken]: appToken,
+    [STORAGE_KEYS.feishuTableId]: tableId,
+  });
+
+  savedFeishuAppToken = appToken;
+  savedFeishuTableId = tableId;
+  setFeishuStatus(`✅ 已保存飞书设置`, 'success');
+  setStatus('✅ 已保存自定义飞书表格配置', 'success');
+}
+
+async function clearFeishuSettings() {
+  await removeStorage([STORAGE_KEYS.feishuAppToken, STORAGE_KEYS.feishuTableId]);
+  savedFeishuAppToken = '';
+  savedFeishuTableId = '';
+
+  if ($('#feishuAppTokenInput')) $('#feishuAppTokenInput').value = '';
+  if ($('#feishuTableIdInput')) $('#feishuTableIdInput').value = '';
+
+  setFeishuStatus('设置后可将数据同步到你自己的多维表格中。');
+  setStatus('✅ 已恢复默认飞书配置', 'success');
 }
 
 async function saveBackendUrl() {
@@ -589,6 +646,8 @@ async function collectAllToFeishu() {
         follower_count: note.follower_count,
         potential_score: note.potential_score || 0,
         note_content: note.note_content || '(自动采集)',
+        feishu_app_token: savedFeishuAppToken || undefined,
+        feishu_table_id: savedFeishuTableId || undefined,
         analysis_result: { message: '批量快速收录' },
       });
       success += 1;
@@ -611,6 +670,8 @@ $('#btnClearApiKey').addEventListener('click', clearApiKey);
 $('#btnToggleApiKey').addEventListener('click', toggleApiKeyVisibility);
 $('#btnSaveBackendUrl').addEventListener('click', saveBackendUrl);
 $('#btnResetBackendUrl').addEventListener('click', resetBackendUrl);
+$('#btnSaveFeishu').addEventListener('click', saveFeishuSettings);
+$('#btnClearFeishu').addEventListener('click', clearFeishuSettings);
 $('#btnExtract').addEventListener('click', startExtract);
 $('#btnAnalyzeBatch').addEventListener('click', runBatchAnalysis);
 $('#btnCollectAll').addEventListener('click', collectAllToFeishu);

@@ -48,6 +48,8 @@ export function initDB() {
       note_content      TEXT NOT NULL,
       analysis_result   TEXT NOT NULL,
       status            TEXT NOT NULL DEFAULT 'PENDING',
+      feishu_app_token  TEXT,
+      feishu_table_id   TEXT,
       feishu_record_url TEXT,
       platform_error_code TEXT,
       created_at        TEXT NOT NULL,
@@ -56,6 +58,8 @@ export function initDB() {
   `);
 
   ensureColumnExists('feishu_records', 'potential_score', 'REAL NOT NULL DEFAULT 0');
+  ensureColumnExists('feishu_records', 'feishu_app_token', 'TEXT');
+  ensureColumnExists('feishu_records', 'feishu_table_id', 'TEXT');
   ensureColumnExists('analysis_jobs', 'error_message', 'TEXT');
 
   console.log('✅ 数据库初始化完成');
@@ -131,6 +135,8 @@ export function createRecord(payload: CreateRecordPayload): FeishuRecord {
     note_content: payload.note_content,
     analysis_result: JSON.stringify(payload.analysis_result),
     status: 'PENDING',
+    feishu_app_token: payload.feishu_app_token || null,
+    feishu_table_id: payload.feishu_table_id || null,
     feishu_record_url: null,
     platform_error_code: null,
     created_at: now,
@@ -139,13 +145,14 @@ export function createRecord(payload: CreateRecordPayload): FeishuRecord {
 
   db.prepare(`
     INSERT INTO feishu_records
-    (id, job_id, note_id, note_url, title, author, cover_url, like_count, follower_count, potential_score, note_content, analysis_result, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, job_id, note_id, note_url, title, author, cover_url, like_count, follower_count, potential_score, note_content, analysis_result, status, feishu_app_token, feishu_table_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     record.id, record.job_id, record.note_id, record.note_url,
     record.title, record.author, record.cover_url,
     record.like_count, record.follower_count, record.potential_score, record.note_content,
-    record.analysis_result, record.status, record.created_at, record.updated_at
+    record.analysis_result, record.status, record.feishu_app_token, record.feishu_table_id,
+    record.created_at, record.updated_at
   );
 
   return record;

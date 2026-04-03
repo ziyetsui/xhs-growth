@@ -45,11 +45,15 @@ export async function writeRecord(record: {
   potential_score: number;
   note_content: string;
   analysis_result: string;
+  app_token?: string;
+  table_id?: string;
 }): Promise<string> {
   const token = await getFeishuToken();
+  const finalAppToken = record.app_token || FEISHU_APP_TOKEN;
+  const finalTableId = record.table_id || FEISHU_TABLE_ID;
 
   const res = await fetch(
-    `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_APP_TOKEN}/tables/${FEISHU_TABLE_ID}/records`,
+    `https://open.feishu.cn/open-apis/bitable/v1/apps/${finalAppToken}/tables/${finalTableId}/records`,
     {
       method: 'POST',
       headers: {
@@ -82,7 +86,7 @@ export async function writeRecord(record: {
   }
 
   const recordId = data.data?.record?.record_id || 'unknown';
-  const feishuUrl = `https://feishu.cn/base/${FEISHU_APP_TOKEN}?table=${FEISHU_TABLE_ID}&record=${recordId}`;
+  const feishuUrl = `https://feishu.cn/base/${finalAppToken}?table=${finalTableId}&record=${recordId}`;
   console.log('✅ 飞书记录写入成功:', recordId);
   return feishuUrl;
 }

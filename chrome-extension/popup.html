@@ -437,8 +437,32 @@
           <button class="btn btn-secondary btn-sm" id="btnClearApiKey">清空</button>
           <button class="btn btn-primary btn-sm" id="btnSaveApiKey">保存 Key</button>
         </div>
-        <div class="settings-hint" id="apiKeyStatus">
-          AI 分析会使用每个用户自己保存的 API Key；不会写入飞书，也不会存入后端数据库。
+
+        <div class="settings-label" style="margin-top: 12px;">飞书多维表格设置 (可选)</div>
+        <div class="settings-row" style="margin-bottom: 8px;">
+          <input
+            class="settings-input"
+            id="feishuAppTokenInput"
+            type="text"
+            placeholder="飞书 App Token (从 URL 中获取)"
+            autocomplete="off"
+          >
+        </div>
+        <div class="settings-row">
+          <input
+            class="settings-input"
+            id="feishuTableIdInput"
+            type="text"
+            placeholder="飞书 Table ID (从 URL 中获取)"
+            autocomplete="off"
+          >
+        </div>
+        <div class="btn-group" style="margin-top: 8px;">
+          <button class="btn btn-secondary btn-sm" id="btnClearFeishu">重置</button>
+          <button class="btn btn-primary btn-sm" id="btnSaveFeishu">保存设置</button>
+        </div>
+        <div class="settings-hint" id="feishuStatus">
+          设置后可将数据同步到你自己的多维表格中。
         </div>
       </div>
     </div>
