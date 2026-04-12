@@ -82,7 +82,11 @@ export async function writeRecord(record: {
       error: data,
       payload: record
     });
-    throw new Error(`飞书写入失败: ${data.msg || JSON.stringify(data)}`);
+    let errorMsg = data.msg || JSON.stringify(data);
+    if (data.code === 91403) {
+      errorMsg = '权限不足 (Forbidden)。请确保已在飞书多维表格中把“自建应用”添加为表格的协作者。';
+    }
+    throw new Error(`飞书写入失败: ${errorMsg}`);
   }
 
   const recordId = data.data?.record?.record_id || 'unknown';

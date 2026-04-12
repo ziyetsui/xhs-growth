@@ -254,7 +254,7 @@ export async function createRecord(req: Request, res: Response) {
       })
       .catch(err => {
         console.error(`❌ 飞书记录 ${record.id} 写入失败:`, err.message);
-        db.updateRecord(record.id, { status: 'SYNC_FAILED' });
+        db.updateRecord(record.id, { status: 'SYNC_FAILED', platform_error_code: err.message });
       });
   } catch (err: any) {
     console.error('createRecord error:', err);
@@ -306,10 +306,10 @@ export async function retrySyncRecord(req: Request, res: Response) {
       table_id: record.feishu_table_id || undefined,
     })
       .then(feishu_record_url => {
-        db.updateRecord(record.id, { status: 'SYNCED', feishu_record_url });
+        db.updateRecord(record.id, { status: 'SYNCED', feishu_record_url, platform_error_code: null });
       })
-      .catch(() => {
-        db.updateRecord(record.id, { status: 'SYNC_FAILED' });
+      .catch(err => {
+        db.updateRecord(record.id, { status: 'SYNC_FAILED', platform_error_code: err.message });
       });
   } catch (err: any) {
     res.status(500).json({ error: { code: 'INTERNAL', message: err.message, retryable: true } });
